@@ -30,6 +30,15 @@ Mathematical Model:
 
 import math
 from typing import Any, Dict, List, Tuple, Callable, Optional
+from datetime import datetime
+
+# Import cost tracking if available
+try:
+    from .argentum.cost_optimization.cost_tracker import CostTracker
+    from .argentum.cost_optimization.token_counter import TokenCounter
+    COST_TRACKING_AVAILABLE = True
+except ImportError:
+    COST_TRACKING_AVAILABLE = False
 
 
 class ContextDecay:
@@ -69,7 +78,8 @@ class ContextDecay:
         >>> decay = ContextDecay(half_life_steps=10, decay_function=linear_decay)
     """
     
-    def __init__(self, half_life_steps: int, decay_function: Optional[Callable[[float, int, int], float]] = None):
+    def __init__(self, half_life_steps: int, decay_function: Optional[Callable[[float, int, int], float]] = None,
+                 cost_optimization: bool = False, max_context_cost: float = 1.0):
         """
         Initialize context decay manager.
         
@@ -77,6 +87,8 @@ class ContextDecay:
             half_life_steps: Number of steps for items to decay to 50% of original importance
             decay_function: Optional custom decay function. Defaults to exponential decay.
                            Function signature: (importance, steps_elapsed, half_life) -> current_weight
+            cost_optimization: Enable cost-based context management and pruning
+            max_context_cost: Maximum cost allowed for context storage (in dollars)
         
         Raises:
             ValueError: If half_life_steps <= 0
@@ -96,12 +108,27 @@ class ContextDecay:
         self.current_step = 0
         self._items: Dict[str, Dict[str, Any]] = {}
         
+        # Cost optimization settings
+        self._cost_optimization = cost_optimization
+        self._max_context_cost = max_context_cost
+        self._current_cost = 0.0
+        self._cost_history: List[Dict[str, Any]] = []
+        
+        # Initialize cost tracker if available and enabled
+        if cost_optimization and COST_TRACKING_AVAILABLE:
+            self._cost_tracker = CostTracker()
+            self._token_counter = TokenCounter()
+        else:
+            self._cost_tracker = None
+            self._token_counter = None
+        
         if decay_function is None:
             self._decay_function = self._exponential_decay
         else:
             self._decay_function = decay_function
     
-    def add(self, key: str, value: Any, importance: float = 1.0, timestamp: Optional[int] = None) -> None:
+    def add(self, key: str, value: Any, importance: float = 1.0, timestamp: Optional[int] = None, 
+            storage_cost: float = 0.0) -> None:
         """
         Add or update a context item with importance score.
         
@@ -110,6 +137,7 @@ class ContextDecay:
             value: The context data to store
             importance: Initial importance score (0.0-1.0, default: 1.0)
             timestamp: Optional step when item was added (default: current_step)
+            storage_cost: Cost to store this context item (used for cost optimization)
         
         Raises:
             ValueError: If importance not in range [0.0, 1.0]
@@ -128,11 +156,43 @@ class ContextDecay:
         if timestamp is None:
             timestamp = self.current_step
             
+        # Check cost constraints if cost optimization is enabled
+        if self._cost_optimization and storage_cost > 0:
+            # Check if adding this item would exceed budget
+            if self._current_cost + storage_cost > self._max_context_cost:
+                self._prune_by_cost_effectiveness()
+                
+            # If still over budget after pruning, try cost-based importance adjustment
+            if self._current_cost + storage_cost > self._max_context_cost:
+                # Adjust importance based on cost efficiency
+                cost_efficiency = importance / max(storage_cost, 0.001)  # Avoid division by zero
+                adjusted_importance = min(importance, cost_efficiency * 0.1)
+                importance = max(0.1, adjusted_importance)  # Minimum viable importance
+        
+        # Remove existing item cost if updating
+        if key in self._items and self._cost_optimization:
+            self._current_cost -= self._items[key].get('storage_cost', 0.0)
+        
         self._items[key] = {
             'value': value,
             'importance': importance,
-            'added_at': timestamp
+            'added_at': timestamp,
+            'storage_cost': storage_cost,
+            'cost_effectiveness': importance / max(storage_cost, 0.001) if storage_cost > 0 else importance
         }
+        
+        # Update current cost
+        if self._cost_optimization:
+            self._current_cost += storage_cost
+            
+            # Record cost event
+            if self._cost_tracker:
+                self._cost_tracker.record_usage(
+                    operation='context_storage',
+                    tokens_used=int(storage_cost * 1000),  # Rough conversion
+                    agent_id='context_manager',
+                    model='storage'
+                )
     
     def step(self) -> None:
         """
@@ -277,3 +337,78 @@ class ContextDecay:
     def _exponential_decay(self, importance: float, steps_elapsed: int, half_life: int) -> float:
         """Default exponential decay function."""
         return importance * (0.5 ** (steps_elapsed / half_life))
+    
+    def _prune_by_cost_effectiveness(self) -> None:
+        """
+        Remove items with lowest cost effectiveness to free up budget.
+        """
+        if not self._cost_optimization or not self._items:
+            return
+            
+        # Sort items by cost effectiveness (ascending - least effective first)
+        items_by_effectiveness = sorted(
+            self._items.items(),
+            key=lambda x: x[1].get('cost_effectiveness', 0.0)
+        )
+        
+        # Remove items until we're under budget or have room for new items
+        target_cost = self._max_context_cost * 0.8  # Leave 20% buffer
+        removed_items = []
+        
+        for key, item in items_by_effectiveness:
+            if self._current_cost <= target_cost:
+                break
+                
+            self._current_cost -= item.get('storage_cost', 0.0)
+            removed_items.append(key)
+            del self._items[key]
+        
+        # Record pruning event
+        if removed_items and self._cost_tracker:
+            self._cost_history.append({
+                'timestamp': datetime.now(),
+                'action': 'cost_pruning',
+                'items_removed': len(removed_items),
+                'cost_freed': sum(self._items.get(k, {}).get('storage_cost', 0.0) for k in removed_items)
+            })
+    
+    def get_cost_report(self) -> Dict[str, Any]:
+        """
+        Get comprehensive cost report for context management.
+        
+        Returns:
+            Dictionary with cost analysis or empty dict if cost optimization disabled
+        """
+        if not self._cost_optimization:
+            return {"error": "Cost optimization not enabled"}
+            
+        total_items = len(self._items)
+        if total_items == 0:
+            return {
+                "total_items": 0,
+                "total_cost": 0.0,
+                "average_cost_per_item": 0.0,
+                "cost_efficiency": 0.0
+            }
+        
+        total_importance = sum(item['importance'] for item in self._items.values())
+        total_cost = self._current_cost
+        items_pruned = sum(event.get('items_removed', 0) for event in self._cost_history)
+        cost_saved = sum(event.get('cost_freed', 0.0) for event in self._cost_history)
+        
+        # Calculate cost effectiveness distribution
+        effectiveness_scores = [item.get('cost_effectiveness', 0.0) for item in self._items.values()]
+        avg_effectiveness = sum(effectiveness_scores) / len(effectiveness_scores) if effectiveness_scores else 0.0
+        
+        return {
+            "total_items": total_items,
+            "total_cost": total_cost,
+            "max_cost_budget": self._max_context_cost,
+            "budget_utilization": total_cost / self._max_context_cost,
+            "average_cost_per_item": total_cost / total_items,
+            "cost_efficiency": total_importance / max(total_cost, 0.001),
+            "items_pruned": items_pruned,
+            "cost_saved": cost_saved,
+            "average_cost_effectiveness": avg_effectiveness,
+            "cost_history": self._cost_history[-10:]  # Last 10 cost events
+        }

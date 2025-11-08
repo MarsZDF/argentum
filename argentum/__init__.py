@@ -55,6 +55,10 @@ from argentum.context_decay import ContextDecay
 # Security utilities
 from argentum.security import configure_security, SecurityConfig
 
+# Cost alerts and export utilities
+from argentum.cost_alerts import CostAlerts, AlertRule, AlertEvent
+from argentum.cost_export import CostExporter, ExportConfig, DashboardConfig
+
 # Plan linting with graceful degradation for missing dependencies
 try:
     from argentum.plan_lint import PlanLinter, LintResult, Issue
@@ -113,6 +117,14 @@ __all__ = [
     # Security utilities
     "configure_security",
     "SecurityConfig",
+    
+    # Cost alerts and export
+    "CostAlerts",
+    "AlertRule",
+    "AlertEvent", 
+    "CostExporter",
+    "ExportConfig",
+    "DashboardConfig",
     
     # Plan linting (optional dependencies)
     "PlanLinter",

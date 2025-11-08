@@ -37,6 +37,14 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any
 import uuid
 
+# Import cost tracking if available
+try:
+    from .argentum.cost_optimization.cost_tracker import CostTracker
+    from .argentum.cost_optimization.token_counter import TokenCounter
+    COST_TRACKING_AVAILABLE = True
+except ImportError:
+    COST_TRACKING_AVAILABLE = False
+
 
 @dataclass
 class Handoff:
@@ -114,6 +122,12 @@ class Handoff:
     timestamp: Optional[str] = None
     handoff_id: Optional[str] = None
     
+    # Cost attribution fields
+    cost_context: Optional[Dict[str, Any]] = None
+    tokens_used: Optional[int] = None
+    processing_cost: Optional[float] = None
+    efficiency_score: Optional[float] = None
+    
     def __post_init__(self):
         """Set defaults for optional fields and validate inputs."""
         if self.timestamp is None:
@@ -149,9 +163,26 @@ class HandoffProtocol:
         >>> receipt = protocol.generate_receipt(handoff, "received_and_processing")
     """
     
+    def __init__(self, track_costs: bool = False):
+        """
+        Initialize HandoffProtocol with optional cost tracking.
+        
+        Args:
+            track_costs: Enable cost tracking for handoff efficiency analysis
+        """
+        self._track_costs = track_costs
+        self._cost_tracker = None
+        self._token_counter = None
+        self._handoff_costs: Dict[str, Dict[str, Any]] = {}
+        
+        if track_costs and COST_TRACKING_AVAILABLE:
+            self._cost_tracker = CostTracker()
+            self._token_counter = TokenCounter()
+    
     def create_handoff(self, from_agent: str, to_agent: str, context_summary: str, 
                       artifacts: List[str], suggested_next_action: Optional[str] = None,
-                      confidence: float = 1.0, metadata: Optional[Dict[str, Any]] = None) -> Handoff:
+                      confidence: float = 1.0, metadata: Optional[Dict[str, Any]] = None,
+                      cost_context: Optional[Dict[str, Any]] = None) -> Handoff:
         """
         Create a new handoff with validation.
         
@@ -179,15 +210,56 @@ class HandoffProtocol:
             ...     metadata={"source": "customer_api", "format": "json"}
             ... )
         """
-        return Handoff(
+        # Process cost context if provided
+        tokens_used = None
+        processing_cost = None
+        efficiency_score = None
+        
+        if cost_context:
+            tokens_used = cost_context.get('tokens_used')
+            processing_cost = cost_context.get('processing_cost')
+            
+            # Calculate efficiency score based on context size and cost
+            if tokens_used and processing_cost:
+                context_complexity = len(context_summary) + len(artifacts) * 100
+                efficiency_score = min(1.0, context_complexity / (tokens_used * processing_cost * 1000))
+        
+        handoff = Handoff(
             from_agent=from_agent,
             to_agent=to_agent,
             context_summary=context_summary,
             artifacts=artifacts,
             suggested_next_action=suggested_next_action,
             confidence=confidence,
-            metadata=metadata or {}
+            metadata=metadata or {},
+            cost_context=cost_context,
+            tokens_used=tokens_used,
+            processing_cost=processing_cost,
+            efficiency_score=efficiency_score
         )
+        
+        # Track handoff cost if cost tracking is enabled
+        if self._track_costs and cost_context and handoff.handoff_id:
+            self._handoff_costs[handoff.handoff_id] = {
+                'timestamp': datetime.now(),
+                'from_agent': from_agent,
+                'to_agent': to_agent,
+                'tokens_used': tokens_used or 0,
+                'processing_cost': processing_cost or 0.0,
+                'efficiency_score': efficiency_score or 0.0,
+                **cost_context
+            }
+            
+            # Record in cost tracker if available
+            if self._cost_tracker and tokens_used:
+                self._cost_tracker.record_usage(
+                    operation='handoff',
+                    tokens_used=tokens_used,
+                    agent_id=f"{from_agent}->{to_agent}",
+                    model=cost_context.get('model', 'unknown')
+                )
+        
+        return handoff
     
     def to_json(self, handoff: Handoff) -> str:
         """
@@ -276,4 +348,69 @@ class HandoffProtocol:
             "status": status,
             "received_at": datetime.utcnow().isoformat(),
             "original_timestamp": handoff.timestamp
+        }
+    
+    def analyze_handoff_efficiency(self, handoff: Handoff) -> Dict[str, Any]:
+        """
+        Analyze the cost efficiency of a handoff.
+        
+        Args:
+            handoff: The handoff to analyze
+            
+        Returns:
+            Dictionary with efficiency metrics
+        """
+        if not self._track_costs:
+            return {"error": "Cost tracking not enabled"}
+            
+        efficiency_report = {
+            "handoff_id": handoff.handoff_id,
+            "transfer_cost": handoff.processing_cost or 0.0,
+            "efficiency_score": handoff.efficiency_score or 0.0,
+            "tokens_used": handoff.tokens_used or 0,
+            "cost_per_artifact": 0.0,
+            "context_density": 0.0
+        }
+        
+        # Calculate cost per artifact
+        if handoff.processing_cost and handoff.artifacts:
+            efficiency_report["cost_per_artifact"] = handoff.processing_cost / len(handoff.artifacts)
+            
+        # Calculate context density (information per token)
+        if handoff.tokens_used and handoff.tokens_used > 0:
+            context_size = len(handoff.context_summary) + sum(len(art) for art in handoff.artifacts)
+            efficiency_report["context_density"] = context_size / handoff.tokens_used
+            
+        return efficiency_report
+    
+    def get_cost_report(self) -> Dict[str, Any]:
+        """
+        Get comprehensive cost report for all tracked handoffs.
+        
+        Returns:
+            Dictionary with cost analysis
+        """
+        if not self._track_costs or not self._handoff_costs:
+            return {"total_handoffs": 0, "total_cost": 0.0}
+            
+        total_cost = sum(cost['processing_cost'] for cost in self._handoff_costs.values())
+        total_tokens = sum(cost['tokens_used'] for cost in self._handoff_costs.values())
+        
+        # Analyze by agent pairs
+        agent_pairs = {}
+        for cost_data in self._handoff_costs.values():
+            pair = f"{cost_data['from_agent']}->{cost_data['to_agent']}"
+            if pair not in agent_pairs:
+                agent_pairs[pair] = {'count': 0, 'total_cost': 0.0, 'total_tokens': 0}
+            agent_pairs[pair]['count'] += 1
+            agent_pairs[pair]['total_cost'] += cost_data['processing_cost']
+            agent_pairs[pair]['total_tokens'] += cost_data['tokens_used']
+        
+        return {
+            "total_handoffs": len(self._handoff_costs),
+            "total_cost": total_cost,
+            "total_tokens": total_tokens,
+            "average_cost_per_handoff": total_cost / len(self._handoff_costs),
+            "agent_pair_breakdown": agent_pairs,
+            "efficiency_scores": [cost.get('efficiency_score', 0.0) for cost in self._handoff_costs.values()]
         }

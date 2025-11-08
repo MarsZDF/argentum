@@ -34,8 +34,17 @@ Diff Format:
 
 from typing import Dict, List, Any, Optional
 import copy
+from datetime import datetime
 from .exceptions import StateDiffError, SnapshotNotFoundError, InvalidStateError
 from .security import secure_state_diff
+
+# Import cost tracking if available
+try:
+    from .argentum.cost_optimization.cost_tracker import CostTracker
+    from .argentum.cost_optimization.token_counter import TokenCounter
+    COST_TRACKING_AVAILABLE = True
+except ImportError:
+    COST_TRACKING_AVAILABLE = False
 
 
 class StateDiff:
@@ -93,18 +102,35 @@ class StateDiff:
         >>> # }
     """
     
-    def __init__(self):
-        """Initialize an empty StateDiff tracker."""
+    def __init__(self, track_costs: bool = False):
+        """
+        Initialize an empty StateDiff tracker.
+        
+        Args:
+            track_costs: Enable cost tracking and attribution for state changes
+        """
         self._snapshots: Dict[str, Dict[str, Any]] = {}
         self._sequence: List[str] = []
+        self._track_costs = track_costs
+        self._cost_data: Dict[str, Dict[str, Any]] = {}
+        
+        # Initialize cost tracker if available and enabled
+        if track_costs and COST_TRACKING_AVAILABLE:
+            self._cost_tracker = CostTracker()
+            self._token_counter = TokenCounter()
+        else:
+            self._cost_tracker = None
+            self._token_counter = None
     
-    def snapshot(self, label: str, state: Dict[str, Any]) -> None:
+    def snapshot(self, label: str, state: Dict[str, Any], cost_context: Optional[Dict[str, Any]] = None) -> None:
         """
         Capture a state snapshot with a descriptive label.
         
         Args:
             label: Descriptive name for this state (e.g., "after_search", "error_state")
             state: Dictionary representing the agent's current state
+            cost_context: Optional cost information for this state change
+                         (e.g., {"operation": "search", "tokens_used": 1500, "cost": 0.003})
             
         Raises:
             SecurityError: If input fails security validation
@@ -134,6 +160,25 @@ class StateDiff:
         self._snapshots[label] = copy.deepcopy(state)
         if label not in self._sequence:
             self._sequence.append(label)
+        
+        # Track cost information if enabled
+        if self._track_costs and cost_context:
+            self._cost_data[label] = {
+                'timestamp': datetime.now(),
+                'operation': cost_context.get('operation', 'unknown'),
+                'tokens_used': cost_context.get('tokens_used', 0),
+                'estimated_cost': cost_context.get('cost', 0.0),
+                **cost_context  # Include any additional cost metadata
+            }
+            
+            # Record cost event in tracker if available
+            if self._cost_tracker and 'tokens_used' in cost_context:
+                self._cost_tracker.record_usage(
+                    operation=cost_context.get('operation', 'state_change'),
+                    tokens_used=cost_context['tokens_used'],
+                    agent_id=cost_context.get('agent_id', 'unknown'),
+                    model=cost_context.get('model', 'unknown')
+                )
     
     def get_changes(self, from_label: str, to_label: str) -> Dict[str, Any]:
         """
@@ -185,7 +230,15 @@ class StateDiff:
         from_state = self._snapshots[from_label]
         to_state = self._snapshots[to_label]
         
-        return self._compute_diff(from_state, to_state)
+        diff_result = self._compute_diff(from_state, to_state)
+        
+        # Add cost impact analysis if cost tracking is enabled
+        if self._track_costs:
+            cost_impact = self._compute_cost_impact(from_label, to_label)
+            if cost_impact:
+                diff_result['cost_impact'] = cost_impact
+        
+        return diff_result
     
     def get_sequence_changes(self) -> List[Dict[str, Any]]:
         """
@@ -321,3 +374,77 @@ class StateDiff:
             return diff
         
         return None
+    
+    def _compute_cost_impact(self, from_label: str, to_label: str) -> Optional[Dict[str, Any]]:
+        """
+        Compute cost impact between two snapshots.
+        
+        Args:
+            from_label: Starting snapshot label
+            to_label: Ending snapshot label
+            
+        Returns:
+            Dictionary with cost impact information or None if no cost data
+        """
+        from_cost = self._cost_data.get(from_label, {})
+        to_cost = self._cost_data.get(to_label, {})
+        
+        if not to_cost:
+            return None
+            
+        cost_impact = {}
+        
+        # Calculate token and cost differences
+        if 'tokens_used' in to_cost:
+            from_tokens = from_cost.get('tokens_used', 0)
+            to_tokens = to_cost['tokens_used']
+            cost_impact['tokens_used'] = to_tokens - from_tokens
+        
+        if 'estimated_cost' in to_cost:
+            from_estimated = from_cost.get('estimated_cost', 0.0)
+            to_estimated = to_cost['estimated_cost']
+            cost_impact['estimated_cost'] = to_estimated - from_estimated
+            
+        # Include operation information
+        if 'operation' in to_cost:
+            cost_impact['operation'] = to_cost['operation']
+            
+        # Calculate time elapsed
+        if 'timestamp' in to_cost:
+            from_time = from_cost.get('timestamp')
+            to_time = to_cost['timestamp']
+            if from_time:
+                elapsed = (to_time - from_time).total_seconds()
+                cost_impact['elapsed_seconds'] = elapsed
+                
+        return cost_impact if cost_impact else None
+    
+    def get_cost_report(self) -> Optional[Dict[str, Any]]:
+        """
+        Get comprehensive cost report for all tracked snapshots.
+        
+        Returns:
+            Dictionary with cost analysis or None if cost tracking disabled
+        """
+        if not self._track_costs or not self._cost_data:
+            return None
+            
+        total_tokens = sum(cost.get('tokens_used', 0) for cost in self._cost_data.values())
+        total_cost = sum(cost.get('estimated_cost', 0.0) for cost in self._cost_data.values())
+        
+        operations = {}
+        for label, cost_data in self._cost_data.items():
+            op = cost_data.get('operation', 'unknown')
+            if op not in operations:
+                operations[op] = {'count': 0, 'tokens': 0, 'cost': 0.0}
+            operations[op]['count'] += 1
+            operations[op]['tokens'] += cost_data.get('tokens_used', 0)
+            operations[op]['cost'] += cost_data.get('estimated_cost', 0.0)
+        
+        return {
+            'total_tokens': total_tokens,
+            'total_cost': total_cost,
+            'operation_breakdown': operations,
+            'snapshot_count': len(self._cost_data),
+            'cost_per_snapshot': total_cost / len(self._cost_data) if self._cost_data else 0.0
+        }
