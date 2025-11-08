@@ -189,11 +189,20 @@ def create_agent_session(agent_id: str, half_life_steps: int = 20, secure: bool 
             enable_all_protections=True
         )
     
+    # Initialize cost tracking if available
+    cost_tracker = None
+    cost_alerts = None
+    if _COST_OPTIMIZATION_AVAILABLE:
+        cost_tracker = CostTracker()
+        cost_alerts = CostAlerts()
+    
     return {
         "agent_id": agent_id,
         "state_diff": StateDiff(),
         "context_decay": ContextDecay(half_life_steps=half_life_steps),
         "handoff_protocol": HandoffProtocol(),
         "plan_linter": PlanLinter() if _PLAN_LINT_AVAILABLE else None,
+        "cost_tracker": cost_tracker,
+        "alerts": cost_alerts,
         "security_config": "enabled" if secure else "disabled",
     }

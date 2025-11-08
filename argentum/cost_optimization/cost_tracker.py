@@ -53,6 +53,52 @@ class CostTracker:
         self._lock = threading.Lock()
         self._start_time = datetime.utcnow()
     
+    def record_usage(self, operation: str, tokens_used: int, agent_id: Optional[str] = None, 
+                     model: str = "gpt-4", cost: Optional[float] = None, 
+                     metadata: Optional[Dict[str, Any]] = None) -> CostEvent:
+        """
+        Simple interface for recording token usage.
+        
+        Args:
+            operation: Type of operation (e.g., "completion", "embedding")
+            tokens_used: Number of tokens consumed
+            agent_id: ID of the agent responsible for this usage
+            model: Model name used
+            cost: Actual cost if known (otherwise estimated)
+            metadata: Additional metadata
+        """
+        from argentum.cost_optimization.token_counter import TokenUsage, TokenizerType
+        
+        # Create TokenUsage object
+        if model.lower().startswith("gpt-4"):
+            tokenizer_type = TokenizerType.OPENAI_GPT4
+        elif model.lower().startswith("gpt-3.5") or "turbo" in model.lower():
+            tokenizer_type = TokenizerType.OPENAI_GPT35
+        elif "claude" in model.lower():
+            tokenizer_type = TokenizerType.ANTHROPIC_CLAUDE
+        else:
+            tokenizer_type = TokenizerType.APPROXIMATE
+        
+        # Estimate input/output split (80% input, 20% output typical)
+        input_tokens = int(tokens_used * 0.8)
+        output_tokens = tokens_used - input_tokens
+        
+        token_usage = TokenUsage(
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            total_tokens=tokens_used,
+            tokenizer_type=tokenizer_type,
+            estimated=cost is None
+        )
+        
+        # Override cost if provided
+        if cost is not None:
+            # Store original cost_estimate and override
+            original_cost = token_usage.cost_estimate
+            token_usage.__dict__['cost_estimate'] = cost
+        
+        return self.record_cost(agent_id, operation, model, token_usage, metadata)
+    
     def record_cost(self, agent_id: Optional[str], operation: str, model: str,
                     token_usage: TokenUsage, metadata: Optional[Dict[str, Any]] = None) -> CostEvent:
         cost = token_usage.cost_estimate
@@ -104,6 +150,69 @@ class CostTracker:
             for event in self._events:
                 by_model[event.model] += event.cost
             return dict(by_model)
+    
+    def get_cost_report(self, agent_id: Optional[str] = None, start_time: Optional[datetime] = None,
+                        end_time: Optional[datetime] = None) -> CostReport:
+        """Get cost report with optional filtering by agent."""
+        if start_time is None:
+            start_time = self._start_time
+        if end_time is None:
+            end_time = datetime.utcnow()
+        
+        with self._lock:
+            # Filter by agent if specified
+            events = self._events
+            if agent_id is not None:
+                events = [e for e in events if e.agent_id == agent_id]
+            
+            period_events = [e for e in events if start_time <= e.timestamp <= end_time]
+            if not period_events:
+                return CostReport(start_time=start_time, end_time=end_time, total_cost=0.0,
+                                total_tokens=0, event_count=0, breakdown=CostBreakdown())
+            
+            by_agent = defaultdict(float)
+            by_operation = defaultdict(float)
+            by_model = defaultdict(float)
+            input_cost = 0.0
+            output_cost = 0.0
+            total_tokens = 0
+            by_time = defaultdict(float)
+            
+            for event in period_events:
+                agent_key = event.agent_id or "unknown"
+                by_agent[agent_key] += event.cost
+                by_operation[event.operation] += event.cost
+                by_model[event.model] += event.cost
+                
+                # Safe token cost calculation
+                try:
+                    from argentum.cost_optimization.token_counter import estimate_cost
+                    input_cost += estimate_cost(event.token_usage.input_tokens, event.token_usage.tokenizer_type, False)
+                    output_cost += estimate_cost(event.token_usage.output_tokens, event.token_usage.tokenizer_type, True)
+                except:
+                    # Fallback if estimate_cost fails
+                    input_cost += event.cost * 0.6  # Assume 60% input cost
+                    output_cost += event.cost * 0.4  # Assume 40% output cost
+                
+                total_tokens += event.token_usage.total_tokens
+                time_bucket = event.timestamp.replace(minute=0, second=0, microsecond=0).isoformat()
+                by_time[time_bucket] += event.cost
+            
+            breakdown = CostBreakdown(
+                by_agent=dict(by_agent), by_operation=dict(by_operation), by_model=dict(by_model),
+                by_time_period=dict(by_time), input_cost=input_cost, output_cost=output_cost,
+                total_cost=input_cost + output_cost
+            )
+            
+            top_agents = sorted(by_agent.items(), key=lambda x: x[1], reverse=True)[:10]
+            top_operations = sorted(by_operation.items(), key=lambda x: x[1], reverse=True)[:10]
+            cost_trend = sorted(by_time.items())
+            recommendations = self._generate_recommendations(breakdown, by_agent, by_operation, by_model)
+            
+            return CostReport(start_time=start_time, end_time=end_time, total_cost=breakdown.total_cost,
+                            total_tokens=total_tokens, event_count=len(period_events), breakdown=breakdown,
+                            top_agents=top_agents, top_operations=top_operations, cost_trend=cost_trend,
+                            recommendations=recommendations)
     
     def get_report(self, start_time: Optional[datetime] = None,
                    end_time: Optional[datetime] = None) -> CostReport:
