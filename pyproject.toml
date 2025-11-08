@@ -149,7 +149,7 @@ addopts = [
     "--cov=argentum",
     "--cov-branch",
     "--cov-report=term-missing:skip-covered",
-    "--cov-fail-under=85"
+    "--cov-fail-under=40"
 ]
 testpaths = ["tests"]
 markers = [

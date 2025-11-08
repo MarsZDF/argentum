@@ -20,8 +20,8 @@ import requests
 from datetime import datetime
 from typing import Dict, List, Optional, Any, Callable
 from dataclasses import dataclass
-from email.mime.text import MimeText
-from email.mime.multipart import MimeMultipart
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 import logging
 import re
 from urllib.parse import urlparse
@@ -574,7 +574,7 @@ This is an automated alert from Argentum cost monitoring.
         """Send email notification."""
         smtp_config = channel["smtp_config"]
         
-        msg = MimeMultipart()
+        msg = MIMEMultipart()
         msg["From"] = smtp_config.get("from_email", "alerts@argentum.ai")
         msg["To"] = channel["email"]
         msg["Subject"] = channel["subject"]
@@ -594,8 +594,8 @@ This is an automated alert from Argentum cost monitoring.
         </html>
         """
         
-        msg.attach(MimeText(message, "plain"))
-        msg.attach(MimeText(html_body, "html"))
+        msg.attach(MIMEText(message, "plain"))
+        msg.attach(MIMEText(html_body, "html"))
         
         # Send email (implementation depends on SMTP configuration)
         # Note: In production, this would use proper SMTP configuration

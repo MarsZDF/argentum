@@ -70,7 +70,7 @@ class SecurityConfig:
             self.dangerous_patterns = [
                 r'<script[^>]*>.*?</script>',  # XSS
                 r'javascript:',               # JavaScript URLs
-                r'on\w+\s*=',                # Event handlers
+                r'on[\w\s]*=',               # Event handlers
                 r'\.\./',                     # Path traversal
                 r'__import__',                # Python imports
                 r'eval\s*\(',                 # Code evaluation
@@ -304,7 +304,7 @@ def create_secure_secrets_list() -> List[str]:
         'token',                 # Generic
         'bearer',                # Bearer tokens
         'auth',                  # Auth tokens
-        'key',                   # Generic key
+        '_key',                  # Private keys (with underscore)
         
         # Cloud providers
         'aws_access_key',        # AWS
