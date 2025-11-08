@@ -89,6 +89,54 @@ restored = protocol.from_json(handoff_json)
 # pickle.loads(data)  # NOT used in argentum
 ```
 
+### 6. Webhook Security
+
+Comprehensive security for external webhook integrations:
+
+- **HTTPS Enforcement**: Only HTTPS webhook URLs are accepted
+- **Private Network Protection**: Blocks localhost and private IP ranges
+- **Message Template Sanitization**: Prevents format string injection attacks
+- **Request Timeout Controls**: 10-second timeout to prevent DoS
+- **Domain Validation**: Warnings for unknown webhook services
+
+```python
+from argentum import CostAlerts
+
+alerts = CostAlerts()
+
+# ✅ Safe - validates URL and sanitizes message
+alerts.add_webhook(
+    "https://hooks.slack.com/services/...",  # HTTPS required
+    threshold=0.8,
+    message="Budget alert: {cost} / {budget}"  # Template sanitized
+)
+
+# ❌ Rejected - HTTP not allowed
+# alerts.add_webhook("http://example.com/hook", threshold=0.8)
+```
+
+### 7. File Export Security
+
+Protection against path traversal and data exposure in exports:
+
+- **Path Validation**: Prevents directory traversal attacks
+- **File Extension Filtering**: Only safe export formats allowed
+- **Data Size Limits**: Prevents large data exports (50K CSV, 10K JSON)
+- **Filename Sanitization**: Removes dangerous characters
+- **Working Directory Enforcement**: Files only created in safe locations
+
+```python
+from argentum import CostExporter
+
+exporter = CostExporter()
+
+# ✅ Safe - validates path and limits data size
+exporter.export_csv("reports/costs.csv")
+
+# ❌ Rejected - path traversal attempt
+# exporter.export_csv("../../../etc/passwd")
+```
+
 ## 🔧 Security Configuration
 
 ### Production Configuration
@@ -200,6 +248,57 @@ for artifact in handoff.artifacts:
     # Process safe_path...
 ```
 
+### 6. Secure Webhook Configuration
+
+```python
+from argentum import CostAlerts
+
+alerts = CostAlerts()
+
+# ✅ Best practices for webhook security
+alerts.add_slack_webhook(
+    "https://hooks.slack.com/services/...",  # Always use HTTPS
+    threshold=0.8,                          # Reasonable threshold
+    channel="#ai-costs",                    # Specific channel
+    username="Argentum-Bot"                 # Clear bot identity
+)
+
+# ✅ Safe email configuration
+alerts.add_email(
+    "finance@company.com",                  # Corporate email only
+    threshold=1.0,                         # Conservative threshold
+    subject="AI Cost Alert"                 # Short, clean subject
+)
+```
+
+### 7. Safe Export Practices
+
+```python
+from argentum import CostExporter
+from argentum.cost_export import ExportConfig
+
+exporter = CostExporter(cost_tracker)
+
+# ✅ Safe export configuration
+config = ExportConfig(
+    include_agent_breakdown=True,           # Business data only
+    include_timestamps=False,              # Reduce data exposure
+    date_format="%Y-%m-%d"                 # Simple date format
+)
+
+# Export to controlled locations
+exporter.export_csv("./reports/costs.csv", config=config)
+
+# ✅ Secure dashboard sharing
+dashboard_url = exporter.generate_dashboard_url(
+    DashboardConfig(
+        public_access=False,               # Internal access only
+        expiry_hours=24,                   # Short expiry time
+        title="Cost Dashboard"             # Simple title
+    )
+)
+```
+
 ## 🔍 Security Testing
 
 ### Automated Security Scans
@@ -229,6 +328,50 @@ for malicious in malicious_inputs:
         print(f"Sanitized: {malicious} -> {result}")
     except SecurityError as e:
         print(f"Correctly rejected: {e}")
+```
+
+### Security Testing for New Features
+
+```python
+from argentum import CostAlerts, CostExporter
+from argentum.cost_alerts import SecurityError
+from argentum.cost_export import ExportSecurityError
+
+# Test webhook security
+alerts = CostAlerts()
+
+# Test malicious webhook URLs
+malicious_urls = [
+    "http://evil.com/hook",              # HTTP should be rejected
+    "https://localhost:8080/hook",       # Localhost should be rejected
+    "https://192.168.1.1/hook",         # Private IP should be rejected
+    "javascript:alert('xss')"            # Invalid scheme
+]
+
+for url in malicious_urls:
+    try:
+        alerts.add_webhook(url, threshold=0.8)
+        print(f"⚠️  URL incorrectly accepted: {url}")
+    except SecurityError:
+        print(f"✅ URL correctly rejected: {url}")
+
+# Test export path traversal
+exporter = CostExporter()
+
+malicious_paths = [
+    "../../../etc/passwd",              # Path traversal
+    "/tmp/../../secret.txt",            # Absolute with traversal  
+    "file.exe",                         # Invalid extension
+    "very_long_filename_" + "x"*300,    # Too long filename
+    "file|with|pipes.csv"               # Dangerous characters
+]
+
+for path in malicious_paths:
+    try:
+        exporter.export_csv(path)
+        print(f"⚠️  Path incorrectly accepted: {path}")
+    except (ExportSecurityError, OSError):
+        print(f"✅ Path correctly rejected: {path}")
 ```
 
 ## 📊 Security Monitoring
@@ -299,6 +442,11 @@ Security updates will be:
 - [ ] Review dependency vulnerabilities
 - [ ] Enable security monitoring
 - [ ] Document security configuration
+- [ ] **Validate webhook URLs** for HTTPS and trusted domains
+- [ ] **Test export path validation** with traversal attempts
+- [ ] **Configure export size limits** appropriate for environment
+- [ ] **Set dashboard expiry times** based on security policy
+- [ ] **Review alert message templates** for injection risks
 
 ### Regular Security Maintenance
 
