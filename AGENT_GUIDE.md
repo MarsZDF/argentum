@@ -1,733 +1,545 @@
-# 🤖 Argentum Agent Guide
+# ARGENTUM AGENT INTEGRATION SPEC
 
-**The Complete Reference for LLMs and AI Agents using Argentum**
+**MACHINE-READABLE INTEGRATION GUIDE FOR LLMs AND AI AGENTS**
 
-> **TL;DR**: Argentum is a cost intelligence platform for AI systems. Use it to track spending, set alerts, optimize costs, and export reports. Perfect for production AI deployments.
-
----
-
-## 🚀 **Quick Start (Copy-Paste Ready)**
-
-```python
-# Install Argentum
-# pip install argentum-agent
-
-# Basic cost monitoring setup
-from argentum import CostTracker, CostAlerts, CostExporter
-
-# 1. Track costs
-tracker = CostTracker()
-tracker.record_usage(operation="search", tokens_used=1500, agent_id="researcher", model="gpt-4")
-
-# 2. Set up alerts
-alerts = CostAlerts()
-alerts.add_slack_webhook("https://hooks.slack.com/your/webhook", threshold=0.8)
-alerts.check_thresholds(current_cost=850, budget=1000)
-
-# 3. Export reports
-exporter = CostExporter(tracker)
-exporter.export_csv("cost_report.csv")
-dashboard_url = exporter.generate_dashboard_url()
+## METADATA
+```yaml
+spec_version: "1.0"
+target_audience: ["LLM", "AI_AGENT", "AUTOMATION"]
+package_name: "argentum-agent"
+current_version: "0.2.0"
+installation: "pip install argentum-agent"
+primary_use_case: "cost_intelligence_and_optimization"
 ```
 
----
-
-## 🎯 **Core Use Cases for AI Agents**
-
-### **1. Budget Monitoring & Alerts**
-```python
-from argentum import CostAlerts
-
-alerts = CostAlerts()
-
-# Slack alert at 80% budget usage
-alerts.add_slack_webhook(
-    webhook_url="https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK",
-    threshold=0.8,
-    message="🚨 AI Budget Alert: {cost:.2f} / {budget:.2f}"
-)
-
-# Email alert at 100% budget
-alerts.add_email("finance@company.com", threshold=1.0)
-
-# Check if thresholds are exceeded
-triggered = alerts.check_thresholds(current_cost=400, budget=500)
-if triggered:
-    print(f"🔥 {len(triggered)} alerts triggered!")
+## CORE_CONCEPTS
+```json
+{
+  "purpose": "Track, optimize, and control costs in AI agent systems",
+  "paradigm": "cost-first_development",
+  "key_benefits": ["cost_visibility", "budget_control", "optimization", "alerting"],
+  "supported_operations": ["token_tracking", "cost_analysis", "budget_management", "export_reporting"]
+}
 ```
 
-### **2. Cost Tracking for Agent Operations**
+## IMPORT_PATTERNS
 ```python
-from argentum import StateDiff
-
-# Track state changes with cost attribution
-diff = StateDiff(track_costs=True)
-
-# Before expensive operation
-diff.snapshot("before_search", agent_state, cost_context={
-    "operation": "search", 
-    "tokens_used": 0, 
-    "cost": 0.0
-})
-
-# After expensive operation
-diff.snapshot("after_search", updated_state, cost_context={
-    "operation": "search",
-    "tokens_used": 1500,
-    "cost": 0.003,
-    "model": "gpt-4"
-})
-
-# Analyze cost impact
-changes = diff.get_changes("before_search", "after_search")
-cost_impact = changes.get('cost_impact', {})
-print(f"Operation cost: ${cost_impact.get('estimated_cost', 0):.4f}")
-```
-
-### **3. Multi-Agent Handoff Cost Tracking**
-```python
-from argentum import HandoffProtocol
-
-protocol = HandoffProtocol(track_costs=True)
-
-# Create cost-aware handoff
-handoff = protocol.create_handoff(
-    from_agent="researcher",
-    to_agent="writer",
-    context_summary="Found 5 sources on quantum computing",
-    artifacts=["sources.json"],
-    confidence=0.85,
-    cost_context={
-        "tokens_used": 2500,
-        "processing_cost": 0.005,
-        "model": "gpt-4"
-    }
-)
-
-# Analyze handoff efficiency
-efficiency = protocol.analyze_handoff_efficiency(handoff)
-print(f"Transfer cost: ${efficiency['transfer_cost']:.4f}")
-print(f"Efficiency score: {efficiency['efficiency_score']:.2f}")
-```
-
-### **4. Context Memory Cost Optimization**
-```python
-from argentum import ContextDecay
-
-# Cost-optimized context management
-decay = ContextDecay(
-    half_life_steps=20,
-    cost_optimization=True,
-    max_context_cost=0.10  # $0.10 budget
-)
-
-# Add context with cost tracking
-decay.add("user_preferences", user_data, importance=0.9, storage_cost=0.001)
-decay.add("session_history", history, importance=0.7, storage_cost=0.05)
-decay.add("temp_analysis", analysis, importance=0.5, storage_cost=0.08)
-
-# Automatic cost-based pruning happens
-decay.step()
-
-# Get cost report
-cost_report = decay.get_cost_report()
-print(f"Context cost: ${cost_report['total_cost']:.3f}")
-print(f"Items pruned: {cost_report['items_pruned']}")
-```
-
-### **5. Export and Reporting**
-```python
-from argentum import CostExporter
-
-exporter = CostExporter(cost_tracker)
-
-# Export to different formats
-exporter.export_csv("costs.csv")                    # Spreadsheet analysis
-exporter.export_json("costs.json")                  # API integration  
-exporter.export_pdf_report("summary.pdf")           # Executive reports
-
-# Shareable dashboard
-dashboard_url = exporter.generate_dashboard_url()
-print(f"Share dashboard: {dashboard_url}")
-
-# Google Sheets integration
-sheets_data = exporter.export_google_sheets_format()
-# Use sheets_data with Google Sheets API
-```
-
----
-
-## 🔧 **Integration Patterns**
-
-### **Pattern 1: Wrapper for Existing Agents**
-```python
-from argentum import StateDiff, CostTracker
-
-class CostAwareAgent:
-    def __init__(self, agent_id: str):
-        self.agent_id = agent_id
-        self.cost_tracker = CostTracker()
-        self.state_diff = StateDiff(track_costs=True)
-    
-    def process(self, input_data, model="gpt-4"):
-        # Track state before
-        self.state_diff.snapshot("before", self.get_state())
-        
-        # Your agent logic here
-        result = self._internal_process(input_data, model)
-        tokens_used = self._estimate_tokens(input_data, result)
-        
-        # Track cost
-        self.cost_tracker.record_usage(
-            operation="process",
-            tokens_used=tokens_used,
-            agent_id=self.agent_id,
-            model=model
-        )
-        
-        # Track state after with cost
-        self.state_diff.snapshot("after", self.get_state(), cost_context={
-            "operation": "process",
-            "tokens_used": tokens_used,
-            "cost": tokens_used * 0.00002,  # Rough GPT-4 pricing
-            "model": model
-        })
-        
-        return result
-```
-
-### **Pattern 2: Decorator for Function Tracking**
-```python
-from functools import wraps
-from argentum import CostTracker
-
-cost_tracker = CostTracker()
-
-def track_cost(operation_name):
-    def decorator(func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            # Execute function
-            result = func(*args, **kwargs)
-            
-            # Estimate cost (implement your logic)
-            tokens_used = estimate_tokens_for_operation(args, kwargs, result)
-            
-            # Track cost
-            cost_tracker.record_usage(
-                operation=operation_name,
-                tokens_used=tokens_used,
-                agent_id=kwargs.get('agent_id', 'unknown'),
-                model=kwargs.get('model', 'gpt-3.5-turbo')
-            )
-            
-            return result
-        return wrapper
-    return decorator
-
-# Usage
-@track_cost("search")
-def search_web(query, agent_id="researcher"):
-    # Your search logic
-    return search_results
-```
-
-### **Pattern 3: Context Manager for Operations**
-```python
-from argentum import CostTracker
-from contextlib import contextmanager
-
-@contextmanager
-def track_operation(operation_name, agent_id, model="gpt-4"):
-    tracker = CostTracker()
-    start_tokens = get_current_token_count()  # Implement this
-    
-    try:
-        yield tracker
-    finally:
-        end_tokens = get_current_token_count()
-        tokens_used = end_tokens - start_tokens
-        
-        tracker.record_usage(
-            operation=operation_name,
-            tokens_used=tokens_used,
-            agent_id=agent_id,
-            model=model
-        )
-
-# Usage
-with track_operation("analysis", "data_analyzer") as tracker:
-    result = complex_analysis(data)
-    # Cost automatically tracked
-```
-
----
-
-## 📋 **Common LLM Integration Scenarios**
-
-### **OpenAI Integration**
-```python
-import openai
-from argentum import CostTracker
-
-class OpenAICostTracker:
-    def __init__(self):
-        self.cost_tracker = CostTracker()
-    
-    def chat_completion(self, messages, model="gpt-4", agent_id="assistant"):
-        response = openai.ChatCompletion.create(
-            model=model,
-            messages=messages
-        )
-        
-        # Track actual token usage
-        self.cost_tracker.record_usage(
-            operation="chat_completion",
-            tokens_used=response.usage.total_tokens,
-            agent_id=agent_id,
-            model=model
-        )
-        
-        return response
-
-# Usage
-tracker = OpenAICostTracker()
-response = tracker.chat_completion([
-    {"role": "user", "content": "Analyze this data..."}
-], agent_id="data_analyst")
-```
-
-### **Anthropic Claude Integration**
-```python
-import anthropic
-from argentum import CostTracker
-
-class ClaudeCostTracker:
-    def __init__(self, api_key):
-        self.client = anthropic.Anthropic(api_key=api_key)
-        self.cost_tracker = CostTracker()
-    
-    def create_message(self, messages, model="claude-3-sonnet-20240229", agent_id="assistant"):
-        response = self.client.messages.create(
-            model=model,
-            messages=messages,
-            max_tokens=1000
-        )
-        
-        # Estimate tokens (Claude doesn't always return usage)
-        input_tokens = self._estimate_tokens(messages)
-        output_tokens = self._estimate_tokens([{"role": "assistant", "content": response.content[0].text}])
-        
-        self.cost_tracker.record_usage(
-            operation="message_creation",
-            tokens_used=input_tokens + output_tokens,
-            agent_id=agent_id,
-            model=model
-        )
-        
-        return response
-```
-
-### **LangChain Integration**
-```python
-from langchain.agents import Agent
-from argentum import StateDiff, CostTracker
-
-class CostAwareLangChainAgent(Agent):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.state_diff = StateDiff(track_costs=True)
-        self.cost_tracker = CostTracker()
-    
-    def run(self, input_data):
-        # Track state before
-        self.state_diff.snapshot("before_run", {"input": input_data})
-        
-        # Run agent
-        result = super().run(input_data)
-        
-        # Estimate cost (implement based on your LLM calls)
-        tokens_used = self._estimate_tokens(input_data, result)
-        
-        # Track cost and state
-        self.cost_tracker.record_usage(
-            operation="agent_run",
-            tokens_used=tokens_used,
-            agent_id="langchain_agent",
-            model="gpt-4"
-        )
-        
-        self.state_diff.snapshot("after_run", {"input": input_data, "output": result}, 
-                                 cost_context={"tokens_used": tokens_used})
-        
-        return result
-```
-
----
-
-## 🎨 **Configuration Templates**
-
-### **Minimal Setup (Development)**
-```python
-from argentum import CostTracker, CostAlerts
-
-# Basic cost tracking
-tracker = CostTracker()
-
-# Simple email alert
-alerts = CostAlerts()
-alerts.add_email("dev@company.com", threshold=1.0)
-
-# Usage in your agent
-tracker.record_usage("search", 1500, "researcher", "gpt-4")
-alerts.check_thresholds(current_cost=50, budget=100)
-```
-
-### **Production Setup (Comprehensive)**
-```python
+# PATTERN: Core imports (always available)
 from argentum import (
-    CostTracker, CostAlerts, CostExporter, 
-    StateDiff, HandoffProtocol, ContextDecay,
-    configure_security
+    StateDiff,          # State tracking with cost attribution
+    Handoff,            # Agent coordination with cost context  
+    ContextDecay,       # Memory management with cost optimization
+    CostAlerts,         # Real-time cost monitoring and alerting
+    CostExporter        # Multi-format cost reporting
 )
 
-# Security configuration
-configure_security(
-    max_state_size_mb=5,
-    max_context_items=5000,
-    enable_all_protections=True
-)
+# PATTERN: Optional imports (require dependencies)
+try:
+    from argentum import PlanLinter  # Requires: pip install argentum-agent[lint]
+except ImportError:
+    PlanLinter = None
 
-# Complete cost monitoring
-tracker = CostTracker()
-alerts = CostAlerts()
-exporter = CostExporter(tracker)
-
-# Multiple alert channels
-alerts.add_slack_webhook("https://hooks.slack.com/...", threshold=0.8)
-alerts.add_email("finance@company.com", threshold=0.9)
-alerts.add_email("cto@company.com", threshold=1.0)
-
-# State tracking with cost awareness
-state_diff = StateDiff(track_costs=True)
-
-# Multi-agent coordination
-handoff_protocol = HandoffProtocol(track_costs=True)
-
-# Context memory management
-context_decay = ContextDecay(
-    half_life_steps=20,
-    cost_optimization=True,
-    max_context_cost=0.50
-)
+# PATTERN: Check available features
+import argentum
+available_features = argentum.check_dependencies()
+# Returns: {"plan_lint": bool, "cost_optimization": bool}
 ```
 
-### **Enterprise Setup (Team Environment)**
-```python
-from argentum import create_agent_session
+## INITIALIZATION_TEMPLATES
 
-# Quick enterprise setup
-session = create_agent_session(
-    agent_id="production_assistant",
-    half_life_steps=30,
+### Template: Cost-Aware Agent Session
+```python
+# TEMPLATE_ID: cost_aware_session
+# USE_CASE: Production agent with cost controls
+# COPY_PASTE_READY: True
+
+import argentum
+
+# Initialize cost tracking
+session = argentum.create_agent_session(
+    agent_id="your_agent_name",
+    half_life_steps=20,
     secure=True
 )
 
-# All tools available in session dict:
-# - session['state_diff']
-# - session['context_decay'] 
-# - session['handoff_protocol']
-# - session['plan_linter']
+tracker = session["cost_tracker"]
+context = session["context_decay"] 
+state_diff = session["state_diff"]
+alerts = session["alerts"]
+
+# Set cost limits
+alerts.add_budget_alert(threshold_dollars=50.0, webhook_url="YOUR_SLACK_WEBHOOK")
+alerts.add_token_alert(threshold_tokens=100000, email="admin@yourcompany.com")
 ```
 
----
-
-## 🚨 **Error Handling & Best Practices**
-
-### **Safe Cost Tracking**
+### Template: Multi-Agent Cost Attribution
 ```python
-from argentum import CostTracker
-from argentum.security import SecurityError
+# TEMPLATE_ID: multi_agent_attribution  
+# USE_CASE: Track costs across multiple agents
+# COPY_PASTE_READY: True
 
-def safe_cost_tracking(operation, tokens, agent_id, model):
-    try:
-        tracker = CostTracker()
-        tracker.record_usage(operation, tokens, agent_id, model)
-    except SecurityError as e:
-        print(f"Security validation failed: {e}")
-        # Log securely or handle appropriately
-    except Exception as e:
-        print(f"Cost tracking failed: {e}")
-        # Don't let cost tracking break your main logic
+from argentum import CostTracker, HandoffProtocol
+
+# Initialize cost tracking
+cost_tracker = CostTracker()
+handoff_protocol = HandoffProtocol(track_costs=True)
+
+# Agent A completes work
+cost_context_a = {
+    "tokens_used": 2500,
+    "model": "gpt-4", 
+    "cost": 0.05,
+    "operation": "research"
+}
+
+# Handoff to Agent B with cost attribution
+handoff = handoff_protocol.create_handoff(
+    from_agent="researcher",
+    to_agent="writer",
+    context_summary="Research completed on topic X",
+    artifacts=["research_notes.json"],
+    confidence=0.9,
+    cost_context=cost_context_a
+)
+
+# Agent B receives handoff and continues
+cost_tracker.record_usage(
+    operation="writing",
+    tokens_used=1800,
+    model="gpt-4",
+    agent_id="writer", 
+    related_handoff_id=handoff.handoff_id
+)
 ```
 
-### **Robust Alert Setup**
+## OPERATION_PATTERNS
+
+### Pattern: Cost Tracking
 ```python
-from argentum import CostAlerts
-from argentum.cost_alerts import SecurityError
+# OPERATION: record_cost_usage
+# REQUIRED_PARAMS: ["operation", "tokens_used", "agent_id"]
+# OPTIONAL_PARAMS: ["model", "cost", "metadata"]
 
-def setup_alerts_safely(webhook_url, email):
-    alerts = CostAlerts()
-    
-    try:
-        # Try webhook (might fail security validation)
-        alerts.add_webhook(webhook_url, threshold=0.8)
-        print("✅ Webhook alert configured")
-    except SecurityError:
-        print("⚠️ Webhook URL failed security validation")
-    
-    try:
-        # Try email (more reliable)
-        alerts.add_email(email, threshold=1.0)
-        print("✅ Email alert configured")
-    except Exception as e:
-        print(f"⚠️ Email alert failed: {e}")
-    
-    return alerts
-```
-
-### **Export with Error Handling**
-```python
-from argentum import CostExporter
-from argentum.cost_export import ExportSecurityError
-
-def safe_export(tracker, filepath):
-    try:
-        exporter = CostExporter(tracker)
-        result = exporter.export_csv(filepath)
-        return result
-    except ExportSecurityError as e:
-        print(f"Export blocked for security: {e}")
-        # Try alternative safe path
-        return exporter.export_csv("./safe_reports/costs.csv")
-    except Exception as e:
-        print(f"Export failed: {e}")
-        return None
-```
-
----
-
-## 🔍 **Debugging & Monitoring**
-
-### **Check Dependencies**
-```python
-from argentum import check_dependencies
-
-deps = check_dependencies()
-print("Available features:")
-for feature, available in deps.items():
-    status = "✅" if available else "❌"
-    print(f"  {feature}: {status}")
-```
-
-### **Monitor Cost Trends**
-```python
 from argentum import CostTracker
 
 tracker = CostTracker()
 
-# Get cost report
-report = tracker.get_cost_report()
-print(f"Total cost: ${report.total_cost:.2f}")
-print(f"Cost by agent: {report.breakdown.by_agent}")
+# PATTERN 1: Basic usage tracking
+tracker.record_usage(
+    operation="completion",
+    tokens_used=1500,
+    agent_id="assistant",
+    model="gpt-4"
+)
 
-# Check if spending is accelerating
-if report.total_cost > expected_cost * 1.2:
-    print("⚠️ Cost spike detected!")
+# PATTERN 2: Detailed cost tracking
+tracker.record_usage(
+    operation="embedding", 
+    tokens_used=5000,
+    cost=0.002,
+    agent_id="embedder",
+    model="text-embedding-3-small",
+    metadata={"batch_size": 100}
+)
+
+# PATTERN 3: Get cost reports
+report = tracker.get_cost_report(agent_id="assistant")
+total_cost = report.total_cost
+token_usage = report.total_tokens
 ```
 
-### **State Evolution Analysis**
+### Pattern: State Tracking with Cost Attribution
 ```python
+# OPERATION: state_diff_with_costs
+# USE_CASE: Track state changes and associated costs
+
 from argentum import StateDiff
 
 diff = StateDiff(track_costs=True)
 
-# Track multiple states
-diff.snapshot("start", initial_state)
-diff.snapshot("mid", intermediate_state, cost_context={"tokens_used": 1000})
-diff.snapshot("end", final_state, cost_context={"tokens_used": 2000})
+# Record state with cost context
+agent_state = {"current_task": "research", "progress": 0.3}
+cost_context = {"tokens_used": 800, "cost": 0.016}
 
-# Analyze sequence
-sequence = diff.get_sequence_changes()
-for transition in sequence:
-    cost_impact = transition['changes'].get('cost_impact', {})
-    print(f"{transition['from']} → {transition['to']}: ${cost_impact.get('estimated_cost', 0):.4f}")
+diff.snapshot("task_start", agent_state, cost_context=cost_context)
+
+# Later state change
+updated_state = {"current_task": "research", "progress": 0.8}
+updated_cost = {"tokens_used": 1200, "cost": 0.024}
+
+diff.snapshot("task_progress", updated_state, cost_context=updated_cost)
+
+# Analyze cost impact of state changes
+cost_report = diff.get_cost_report()
 ```
 
----
-
-## 🎯 **Quick Reference for AI Agents**
-
-### **Essential Imports**
+### Pattern: Context Management with Cost Optimization
 ```python
-# Core cost tracking
-from argentum import CostTracker, CostAlerts, CostExporter
+# OPERATION: cost_optimized_context
+# USE_CASE: Manage context with cost constraints
 
-# State and handoff tracking  
-from argentum import StateDiff, HandoffProtocol, ContextDecay
+from argentum import ContextDecay
 
-# Security and configuration
-from argentum import configure_security, create_agent_session
-
-# Error handling
-from argentum.cost_alerts import SecurityError
-from argentum.cost_export import ExportSecurityError
-```
-
-### **Most Common Patterns**
-```python
-# 1. Basic cost tracking
-tracker = CostTracker()
-tracker.record_usage("operation", tokens_used, "agent_id", "model")
-
-# 2. Budget alerts
-alerts = CostAlerts()
-alerts.add_slack_webhook(webhook_url, threshold=0.8)
-triggered = alerts.check_thresholds(current_cost, budget)
-
-# 3. State tracking with costs
-diff = StateDiff(track_costs=True)
-diff.snapshot("label", state, cost_context={"tokens_used": N, "cost": X})
-
-# 4. Export reports
-exporter = CostExporter(tracker)
-exporter.export_csv("report.csv")
-
-# 5. Secure setup
-configure_security(enable_all_protections=True)
-```
-
-### **Token Estimation Helpers**
-```python
-# Rough token estimation (implement for your use case)
-def estimate_tokens(text):
-    return len(text) // 4  # Rough approximation
-
-def estimate_cost(tokens, model="gpt-4"):
-    rates = {
-        "gpt-4": 0.00003,           # $0.03/1K tokens
-        "gpt-3.5-turbo": 0.000002,  # $0.002/1K tokens  
-        "claude-3-sonnet": 0.000015  # $0.015/1K tokens
-    }
-    return tokens * rates.get(model, 0.00001)
-```
-
----
-
-## 🚀 **Ready-to-Use Agent Template**
-
-```python
-"""
-Complete cost-aware AI agent template using Argentum.
-Copy and customize for your specific agent implementation.
-"""
-
-from argentum import (
-    CostTracker, CostAlerts, CostExporter,
-    StateDiff, configure_security
+# Initialize with cost optimization enabled
+context = ContextDecay(
+    half_life_steps=10, 
+    cost_optimization=True,
+    max_context_cost=0.10  # Maximum $0.10 for context storage
 )
-from datetime import datetime
 
-class CostIntelligentAgent:
-    def __init__(self, agent_id: str, budget: float = 100.0):
+# Add context items with cost tracking
+context.add(
+    key="research_data", 
+    value="Large research document...",
+    importance=0.8,
+    storage_cost=0.002
+)
+
+# Context automatically prunes expensive low-value items
+context.step()  # Advances time and applies cost-based pruning
+active_items = context.get_active()
+```
+
+## INTEGRATION_PATTERNS
+
+### Pattern: OpenAI Integration
+```python
+# FRAMEWORK: openai
+# INTEGRATION_TYPE: cost_wrapper
+
+import openai
+from argentum import CostTracker
+
+class CostAwareOpenAI:
+    def __init__(self, agent_id: str):
+        self.client = openai.OpenAI()
+        self.tracker = CostTracker()
         self.agent_id = agent_id
-        self.budget = budget
-        
-        # Configure security
-        configure_security(enable_all_protections=True)
-        
-        # Initialize cost tracking
-        self.cost_tracker = CostTracker()
-        self.state_diff = StateDiff(track_costs=True)
-        
-        # Set up alerts
-        self.alerts = CostAlerts()
-        self.alerts.add_email("alerts@company.com", threshold=0.9)
-        
-        # Export for reporting
-        self.exporter = CostExporter(self.cost_tracker)
-        
-        print(f"🤖 Agent {agent_id} initialized with ${budget} budget")
     
-    def process(self, input_data: str, model: str = "gpt-4") -> str:
-        """Process input with full cost tracking."""
-        
-        # 1. Track state before
-        self.state_diff.snapshot("before_process", {"input_received": True})
-        
-        # 2. Your AI logic here
-        result = self._call_llm(input_data, model)
-        tokens_used = self._estimate_tokens(input_data + result)
-        
-        # 3. Track cost
-        self.cost_tracker.record_usage(
-            operation="process",
-            tokens_used=tokens_used,
-            agent_id=self.agent_id,
-            model=model
+    def chat_completion(self, messages, model="gpt-4", **kwargs):
+        # Make API call
+        response = self.client.chat.completions.create(
+            messages=messages,
+            model=model,
+            **kwargs
         )
         
-        # 4. Track state after with cost
-        self.state_diff.snapshot("after_process", 
-                                {"input_received": True, "output_generated": True},
-                                cost_context={
-                                    "tokens_used": tokens_used,
-                                    "cost": tokens_used * 0.00003,  # GPT-4 rate
-                                    "model": model
-                                })
+        # Track costs
+        self.tracker.record_usage(
+            operation="chat_completion",
+            tokens_used=response.usage.total_tokens,
+            agent_id=self.agent_id,
+            model=model,
+            metadata={"prompt_tokens": response.usage.prompt_tokens}
+        )
         
-        # 5. Check budget alerts
-        current_cost = self.get_total_cost()
-        alerts = self.alerts.check_thresholds(current_cost, self.budget)
-        if alerts:
-            print(f"🚨 {len(alerts)} budget alerts triggered!")
-        
-        return result
-    
-    def _call_llm(self, input_data: str, model: str) -> str:
-        """Your LLM call implementation."""
-        # Replace with actual LLM call
-        return f"Processed: {input_data[:50]}... using {model}"
-    
-    def _estimate_tokens(self, text: str) -> int:
-        """Estimate token count."""
-        return len(text) // 4  # Rough approximation
-    
-    def get_total_cost(self) -> float:
-        """Get current total cost."""
-        report = self.cost_tracker.get_cost_report()
-        return report.total_cost
-    
-    def generate_report(self) -> str:
-        """Generate cost report."""
-        filepath = f"cost_report_{self.agent_id}_{datetime.now().strftime('%Y%m%d')}.csv"
-        return self.exporter.export_csv(filepath)
-    
-    def get_cost_summary(self) -> dict:
-        """Get cost summary for monitoring."""
-        report = self.cost_tracker.get_cost_report()
-        return {
-            "agent_id": self.agent_id,
-            "total_cost": report.total_cost,
-            "budget": self.budget,
-            "utilization": (report.total_cost / self.budget) * 100,
-            "operations": len(report.breakdown.by_operation)
-        }
+        return response
 
-# Usage example
-if __name__ == "__main__":
-    agent = CostIntelligentAgent("demo_agent", budget=50.0)
+# Usage
+ai = CostAwareOpenAI(agent_id="assistant")
+response = ai.chat_completion([{"role": "user", "content": "Hello"}])
+```
+
+### Pattern: LangChain Integration  
+```python
+# FRAMEWORK: langchain
+# INTEGRATION_TYPE: callback
+
+from langchain.callbacks.base import BaseCallbackHandler
+from argentum import CostTracker
+
+class ArgentumCostCallback(BaseCallbackHandler):
+    def __init__(self, agent_id: str):
+        self.tracker = CostTracker()
+        self.agent_id = agent_id
     
-    result = agent.process("Analyze market trends for Q4", model="gpt-4")
-    print(f"Result: {result}")
+    def on_llm_end(self, response, **kwargs):
+        # Extract token usage from LangChain response
+        if hasattr(response, 'llm_output') and 'token_usage' in response.llm_output:
+            tokens = response.llm_output['token_usage']['total_tokens']
+            model = response.llm_output.get('model_name', 'unknown')
+            
+            self.tracker.record_usage(
+                operation="langchain_call",
+                tokens_used=tokens,
+                agent_id=self.agent_id,
+                model=model
+            )
+
+# Usage with LangChain
+from langchain.llms import OpenAI
+
+callback = ArgentumCostCallback(agent_id="langchain_agent")
+llm = OpenAI(callbacks=[callback])
+result = llm("What is AI?")
+```
+
+## ALERT_CONFIGURATION
+
+### Alert Types and Triggers
+```yaml
+alert_types:
+  budget_alert:
+    trigger: "cost_threshold_exceeded"
+    params: ["threshold_dollars", "webhook_url", "email"]
     
-    summary = agent.get_cost_summary()
-    print(f"Cost summary: {summary}")
+  token_alert:
+    trigger: "token_usage_exceeded" 
+    params: ["threshold_tokens", "notification_channel"]
     
-    report_file = agent.generate_report()
-    print(f"Report saved: {report_file}")
+  efficiency_alert:
+    trigger: "cost_per_token_degraded"
+    params: ["baseline_efficiency", "degradation_threshold"]
+
+notification_channels:
+  slack:
+    url_pattern: "https://hooks.slack.com/services/..."
+    method: "webhook"
+    
+  discord: 
+    url_pattern: "https://discord.com/api/webhooks/..."
+    method: "webhook"
+    
+  email:
+    method: "smtp"
+    required_config: ["smtp_server", "username", "password"]
+```
+
+### Alert Configuration Examples
+```python
+# PATTERN: Slack alerts
+from argentum import CostAlerts
+
+alerts = CostAlerts()
+
+alerts.add_slack_webhook(
+    webhook_url="https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK",
+    threshold_dollars=25.0,
+    message_template="🚨 Cost Alert: ${cost} exceeded ${threshold} for agent {agent_id}"
+)
+
+# PATTERN: Email alerts  
+alerts.add_email_alert(
+    email="admin@company.com",
+    threshold_tokens=50000,
+    smtp_config={
+        "smtp_server": "smtp.gmail.com",
+        "port": 587,
+        "username": "alerts@company.com", 
+        "password": "app_password"
+    }
+)
+
+# PATTERN: Discord alerts
+alerts.add_discord_webhook(
+    webhook_url="https://discord.com/api/webhooks/YOUR/DISCORD/WEBHOOK",
+    threshold_dollars=10.0
+)
+```
+
+## EXPORT_AND_REPORTING
+
+### Export Formats and Usage
+```python
+# PATTERN: Multi-format exports
+from argentum import CostExporter
+
+exporter = CostExporter()
+
+# CSV export for spreadsheet analysis
+exporter.export_csv("cost_report.csv", date_range="last_30_days")
+
+# Excel export with multiple sheets
+exporter.export_excel("detailed_costs.xlsx", include_charts=True)
+
+# PDF executive summary
+exporter.export_pdf("executive_summary.pdf", summary_only=True)
+
+# JSON for programmatic analysis
+data = exporter.export_json(agent_filter=["researcher", "writer"])
+
+# Generate shareable dashboard URL
+dashboard_url = exporter.generate_dashboard_url(
+    agents=["all"],
+    date_range="last_7_days", 
+    public=True,
+    expires_in_days=30
+)
+```
+
+## ERROR_HANDLING_PATTERNS
+
+### Standard Error Types
+```python
+# PATTERN: Handle Argentum exceptions
+from argentum import (
+    BudgetExceededError,
+    SecurityError, 
+    ConfigurationError,
+    DependencyMissingError
+)
+
+try:
+    # Operation that might exceed budget
+    tracker.record_usage(operation="expensive_task", tokens_used=100000, agent_id="agent")
+    
+except BudgetExceededError as e:
+    print(f"Budget exceeded: {e.current_cost} > {e.budget_limit}")
+    # Implement fallback strategy
+    
+except SecurityError as e:
+    print(f"Security validation failed: {e}")
+    # Handle security issue
+    
+except DependencyMissingError as e:
+    print(f"Missing optional dependency: {e}")
+    # Gracefully degrade functionality
+```
+
+## PERFORMANCE_OPTIMIZATION
+
+### Best Practices for Production
+```python
+# PATTERN: Optimized production setup
+import argentum
+
+# 1. Use batch operations for high-volume tracking
+tracker = argentum.CostTracker(batch_size=100, flush_interval=60)
+
+# 2. Configure context decay for memory efficiency  
+context = argentum.ContextDecay(
+    half_life_steps=50,
+    max_items=1000,
+    cost_optimization=True
+)
+
+# 3. Use sampling for very high-volume agents
+diff = argentum.StateDiff(
+    max_snapshots=100,
+    sampling_rate=0.1  # Sample 10% of operations
+)
+
+# 4. Configure async alerts for non-blocking operation
+alerts = argentum.CostAlerts(async_mode=True, queue_size=1000)
+```
+
+## SECURITY_CONSIDERATIONS
+
+### Required Security Patterns
+```python
+# PATTERN: Secure configuration
+from argentum import configure_security
+
+# Configure security settings
+configure_security({
+    "enable_input_sanitization": True,
+    "max_log_field_length": 500,
+    "webhook_domain_whitelist": ["hooks.slack.com", "discord.com"],
+    "enable_secrets_detection": True
+})
+
+# PATTERN: Validate webhook URLs before use
+from argentum.security import validate_webhook_url
+
+webhook_url = "https://hooks.slack.com/services/..."
+if validate_webhook_url(webhook_url):
+    alerts.add_slack_webhook(webhook_url, threshold_dollars=10.0)
+else:
+    raise SecurityError("Invalid webhook URL")
+```
+
+## TESTING_PATTERNS
+
+### Unit Test Templates
+```python
+# TEMPLATE: Test cost tracking
+import unittest
+from argentum import CostTracker
+
+class TestCostTracking(unittest.TestCase):
+    def setUp(self):
+        self.tracker = CostTracker()
+    
+    def test_basic_cost_recording(self):
+        self.tracker.record_usage(
+            operation="test",
+            tokens_used=100,
+            agent_id="test_agent"
+        )
+        
+        report = self.tracker.get_cost_report(agent_id="test_agent")
+        self.assertEqual(report.total_tokens, 100)
+    
+    def test_cost_calculation(self):
+        self.tracker.record_usage(
+            operation="test",
+            tokens_used=1000,
+            model="gpt-4",
+            agent_id="test_agent"
+        )
+        
+        report = self.tracker.get_cost_report(agent_id="test_agent")
+        self.assertGreater(report.total_cost, 0)
+```
+
+## TROUBLESHOOTING_GUIDE
+
+### Common Issues and Solutions
+```yaml
+issue_patterns:
+  import_error_plan_lint:
+    error: "ImportError: No module named 'jsonschema'"
+    solution: "pip install argentum-agent[lint]"
+    
+  budget_exceeded:
+    error: "BudgetExceededError" 
+    solution: "Increase budget or implement cost optimization"
+    
+  webhook_validation_failed:
+    error: "SecurityError: Invalid webhook URL"
+    solution: "Use HTTPS URLs from whitelisted domains"
+    
+  high_memory_usage:
+    error: "MemoryError with large context"
+    solution: "Enable cost_optimization and set max_context_cost"
+```
+
+### Debug Commands
+```python
+# DEBUGGING: Check system status
+import argentum
+
+# Check available features
+features = argentum.check_dependencies()
+print("Available features:", features)
+
+# Validate configuration
+status = argentum.validate_configuration()
+print("Config status:", status)
+
+# Get performance metrics
+metrics = argentum.get_performance_metrics()
+print("Performance:", metrics)
+```
+
+## VERSION_COMPATIBILITY
+
+```yaml
+version_matrix:
+  "0.2.0":
+    python_versions: ["3.8", "3.9", "3.10", "3.11", "3.12"]
+    breaking_changes: []
+    new_features: ["cost_optimization", "enhanced_security"]
+    
+  "0.1.0": 
+    python_versions: ["3.8", "3.9", "3.10", "3.11", "3.12"]
+    features: ["basic_tracking", "simple_alerts"]
 ```
 
 ---
 
-**🎯 This guide provides everything an AI agent or LLM needs to integrate Argentum cost intelligence into their workflow. All code examples are tested and production-ready.**
+**END OF MACHINE-READABLE SPECIFICATION**
+
+*For human-readable documentation, see README.md*
+*For security details, see SECURITY.md*
+*For version management, see docs/VERSION_MANAGEMENT.md*
