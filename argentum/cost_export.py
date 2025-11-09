@@ -48,7 +48,7 @@ except ImportError:
 
 # Try to import cost tracker
 try:
-    from .argentum.cost_optimization.cost_tracker import CostTracker
+    from .cost_optimization.cost_tracker import CostTracker
     COST_TRACKING_AVAILABLE = True
 except ImportError:
     COST_TRACKING_AVAILABLE = False

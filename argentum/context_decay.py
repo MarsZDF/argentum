@@ -34,8 +34,8 @@ from datetime import datetime
 
 # Import cost tracking if available
 try:
-    from .argentum.cost_optimization.cost_tracker import CostTracker
-    from .argentum.cost_optimization.token_counter import TokenCounter
+    from .cost_optimization.cost_tracker import CostTracker
+    from .cost_optimization.token_counter import TokenCounter
     COST_TRACKING_AVAILABLE = True
 except ImportError:
     COST_TRACKING_AVAILABLE = False

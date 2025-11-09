@@ -84,7 +84,8 @@ jobs:
         diff.snapshot('test', {'data': 1})
         print('StateDiff works')
         
-        handoff = argentum.Handoff('a', 'b', 'summary', [], 0.8)
+        protocol = argentum.HandoffProtocol()
+        handoff = protocol.create_handoff('a', 'b', 'summary', [], confidence=0.8)
         print('Handoff works')
         
         decay = argentum.ContextDecay(5)

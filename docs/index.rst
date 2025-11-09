@@ -36,7 +36,9 @@ Basic usage:
     changes = diff.get_changes("start", "after_search")
     
     # Create agent handoffs
-    handoff = Handoff(
+    from argentum import HandoffProtocol
+    protocol = HandoffProtocol()
+    handoff = protocol.create_handoff(
         from_agent="researcher",
         to_agent="writer", 
         context_summary="Found 5 sources on topic",
