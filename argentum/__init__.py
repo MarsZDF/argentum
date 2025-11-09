@@ -47,27 +47,28 @@ For more examples and documentation, visit: https://github.com/MarsZDF/argentum
 """
 
 from argentum.__version__ import __version__, __version_info__, get_version
+from argentum.context_decay import ContextDecay
+
+# Cost alerts and export utilities
+from argentum.cost_alerts import AlertEvent, AlertRule, CostAlerts
+from argentum.cost_export import CostExporter, DashboardConfig, ExportConfig
+from argentum.handoff import Handoff, HandoffProtocol
+
+# Security utilities
+from argentum.security import SecurityConfig, configure_security
 
 # Core classes - import with error handling for optional dependencies
 from argentum.state_diff import StateDiff
-from argentum.handoff import Handoff, HandoffProtocol
-from argentum.context_decay import ContextDecay
-
-# Security utilities
-from argentum.security import configure_security, SecurityConfig
-
-# Cost alerts and export utilities
-from argentum.cost_alerts import CostAlerts, AlertRule, AlertEvent
-from argentum.cost_export import CostExporter, ExportConfig, DashboardConfig
 
 # Plan linting with graceful degradation for missing dependencies
 try:
-    from argentum.plan_lint import PlanLinter, LintResult, Issue
+    from argentum.plan_lint import Issue, LintResult, PlanLinter
+
     _PLAN_LINT_AVAILABLE = True
 except ImportError as e:
     _PLAN_LINT_AVAILABLE = False
     _plan_lint_error = str(e)
-    
+
     # Create stub classes that provide helpful error messages
     class PlanLinter:
         def __init__(self, *args, **kwargs):
@@ -76,11 +77,11 @@ except ImportError as e:
                 f"Install with: pip install 'argentum-agent[lint]'. "
                 f"Original error: {_plan_lint_error}"
             )
-    
+
     class LintResult:
         def __init__(self, *args, **kwargs):
             raise ImportError("LintResult requires 'argentum-agent[lint]' dependencies")
-    
+
     class Issue:
         def __init__(self, *args, **kwargs):
             raise ImportError("Issue requires 'argentum-agent[lint]' dependencies")
@@ -89,14 +90,15 @@ except ImportError as e:
 # Cost optimization (always available)
 try:
     from argentum.cost_optimization import (
-        CostOptimizationOrchestrator,
-        TokenBudgetManager,
-        CostTracker,
-        TokenCounter,
         CacheLayer,
         ContextOptimizer,
+        CostOptimizationOrchestrator,
+        CostTracker,
         ModelSelector,
+        TokenBudgetManager,
+        TokenCounter,
     )
+
     _COST_OPTIMIZATION_AVAILABLE = True
 except ImportError as e:
     _COST_OPTIMIZATION_AVAILABLE = False
@@ -106,32 +108,27 @@ except ImportError as e:
 __all__ = [
     # Version info
     "__version__",
-    "__version_info__", 
+    "__version_info__",
     "get_version",
-    
     # Core functionality (always available)
     "StateDiff",
-    "Handoff", 
+    "Handoff",
     "HandoffProtocol",
     "ContextDecay",
-    
     # Security utilities
     "configure_security",
     "SecurityConfig",
-    
     # Cost alerts and export
     "CostAlerts",
     "AlertRule",
-    "AlertEvent", 
+    "AlertEvent",
     "CostExporter",
     "ExportConfig",
     "DashboardConfig",
-    
     # Plan linting (optional dependencies)
     "PlanLinter",
-    "LintResult", 
+    "LintResult",
     "Issue",
-    
     # Cost optimization
     "CostOptimizationOrchestrator",
     "TokenBudgetManager",
@@ -142,13 +139,14 @@ __all__ = [
     "ModelSelector",
 ]
 
+
 def check_dependencies() -> dict:
     """
     Check availability of optional dependencies.
-    
+
     Returns:
         Dictionary showing which optional features are available
-        
+
     Examples:
         >>> deps = check_dependencies()
         >>> if deps['plan_lint']:
@@ -161,19 +159,20 @@ def check_dependencies() -> dict:
         "cost_optimization": _COST_OPTIMIZATION_AVAILABLE,
     }
 
+
 # Convenience function for common use cases
 def create_agent_session(agent_id: str, half_life_steps: int = 20, secure: bool = True) -> dict:
     """
     Create a complete agent debugging session with all tools.
-    
+
     Args:
         agent_id: Unique identifier for this agent session
         half_life_steps: Context decay half-life for memory management
         secure: Whether to apply security configuration (recommended: True)
-        
+
     Returns:
         Dictionary with initialized debugging tools
-        
+
     Examples:
         >>> session = create_agent_session("researcher_v1")
         >>> session['state_diff'].snapshot("init", initial_state)
@@ -184,19 +183,19 @@ def create_agent_session(agent_id: str, half_life_steps: int = 20, secure: bool 
     # Configure security if requested
     if secure:
         configure_security(
-            max_state_size_mb=10,      # 10MB state limit
-            max_context_items=10000,   # 10K context items
-            max_plan_steps=1000,       # 1K plan steps
-            enable_all_protections=True
+            max_state_size_mb=10,  # 10MB state limit
+            max_context_items=10000,  # 10K context items
+            max_plan_steps=1000,  # 1K plan steps
+            enable_all_protections=True,
         )
-    
+
     # Initialize cost tracking if available
     cost_tracker = None
     cost_alerts = None
     if _COST_OPTIMIZATION_AVAILABLE:
         cost_tracker = CostTracker()
         cost_alerts = CostAlerts()
-    
+
     return {
         "agent_id": agent_id,
         "state_diff": StateDiff(),

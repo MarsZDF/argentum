@@ -1,20 +1,22 @@
 """
 Cost optimization orchestrator.
 """
-from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
 from datetime import datetime
-from .token_budget import TokenBudgetManager, BudgetExceededError
-from .cost_tracker import CostTracker
-from .token_counter import TokenCounter, TokenUsage, TokenizerType
-from .cache import CacheLayer, CacheConfig
+from typing import Any, Dict, List, Optional
+
+from .batch_optimizer import BatchOptimizer
+from .budget_allocator import AllocationStrategy, BudgetAllocator
+from .cache import CacheConfig, CacheLayer
 from .context_optimizer import ContextOptimizer, OptimizationStrategy
+from .context_pruner import ContextPruner, PruningStrategy
+from .cost_tracker import CostTracker
+from .deduplicator import RequestDeduplicator
 from .model_selector import ModelSelector
 from .prompt_optimizer import PromptOptimizer
-from .batch_optimizer import BatchOptimizer
-from .deduplicator import RequestDeduplicator
-from .context_pruner import ContextPruner, PruningStrategy
-from .budget_allocator import BudgetAllocator, AllocationStrategy
+from .token_budget import BudgetExceededError, TokenBudgetManager
+from .token_counter import TokenCounter, TokenizerType, TokenUsage
+
 
 @dataclass
 class OptimizationConfig:
@@ -41,6 +43,7 @@ class OptimizationConfig:
     enable_budget_allocation: bool = False
     allocation_strategy: AllocationStrategy = AllocationStrategy.EQUAL
 
+
 @dataclass
 class OptimizationResult:
     success: bool
@@ -51,27 +54,73 @@ class OptimizationResult:
     cached: bool = False
     error: Optional[str] = None
 
+
 class CostOptimizationOrchestrator:
     def __init__(self, config: Optional[OptimizationConfig] = None):
         self.config = config or OptimizationConfig()
         self.budget_manager = TokenBudgetManager(
             total_budget=self.config.total_budget_tokens,
             per_agent_budget=self.config.per_agent_budget,
-            alert_threshold=self.config.alert_threshold
+            alert_threshold=self.config.alert_threshold,
         )
         self.cost_tracker = CostTracker()
         self.token_counter = TokenCounter()
-        self.cache = CacheLayer(CacheConfig(ttl_seconds=self.config.cache_ttl_seconds)) if self.config.enable_caching else None
-        self.context_optimizer = ContextOptimizer(max_tokens=self.config.max_context_tokens, strategy=self.config.context_optimization_strategy) if self.config.enable_context_optimization else None
+        self.cache = (
+            CacheLayer(CacheConfig(ttl_seconds=self.config.cache_ttl_seconds))
+            if self.config.enable_caching
+            else None
+        )
+        self.context_optimizer = (
+            ContextOptimizer(
+                max_tokens=self.config.max_context_tokens,
+                strategy=self.config.context_optimization_strategy,
+            )
+            if self.config.enable_context_optimization
+            else None
+        )
         self.model_selector = ModelSelector() if self.config.enable_model_selection else None
-        self.prompt_optimizer = PromptOptimizer(aggressive=self.config.aggressive_prompt_optimization) if self.config.enable_prompt_optimization else None
-        self.batch_optimizer = BatchOptimizer(max_batch_size=self.config.max_batch_size, timeout_seconds=self.config.batch_timeout_seconds) if self.config.enable_batching else None
-        self.deduplicator = RequestDeduplicator(enable_semantic_matching=self.config.semantic_deduplication) if self.config.enable_deduplication else None
-        self.context_pruner = ContextPruner(strategy=self.config.pruning_strategy, max_items=self.config.max_context_items) if self.config.enable_context_pruning else None
-        self.budget_allocator = BudgetAllocator(total_budget=self.config.total_budget_tokens, strategy=self.config.allocation_strategy) if self.config.enable_budget_allocation else None
-    
-    def optimize_request(self, prompt: str, context: Optional[List] = None, agent_id: Optional[str] = None,
-                        estimated_output_tokens: int = 500, model: Optional[str] = None) -> OptimizationResult:
+        self.prompt_optimizer = (
+            PromptOptimizer(aggressive=self.config.aggressive_prompt_optimization)
+            if self.config.enable_prompt_optimization
+            else None
+        )
+        self.batch_optimizer = (
+            BatchOptimizer(
+                max_batch_size=self.config.max_batch_size,
+                timeout_seconds=self.config.batch_timeout_seconds,
+            )
+            if self.config.enable_batching
+            else None
+        )
+        self.deduplicator = (
+            RequestDeduplicator(enable_semantic_matching=self.config.semantic_deduplication)
+            if self.config.enable_deduplication
+            else None
+        )
+        self.context_pruner = (
+            ContextPruner(
+                strategy=self.config.pruning_strategy, max_items=self.config.max_context_items
+            )
+            if self.config.enable_context_pruning
+            else None
+        )
+        self.budget_allocator = (
+            BudgetAllocator(
+                total_budget=self.config.total_budget_tokens,
+                strategy=self.config.allocation_strategy,
+            )
+            if self.config.enable_budget_allocation
+            else None
+        )
+
+    def optimize_request(
+        self,
+        prompt: str,
+        context: Optional[List] = None,
+        agent_id: Optional[str] = None,
+        estimated_output_tokens: int = 500,
+        model: Optional[str] = None,
+    ) -> OptimizationResult:
         optimizations_applied = []
         cost_saved = 0.0
         tokens_saved = 0
@@ -80,18 +129,22 @@ class CostOptimizationOrchestrator:
         try:
             if self.cache:
                 cache_result = self.cache.get(prompt)
-                if hasattr(cache_result, 'value'):
+                if hasattr(cache_result, "value"):
                     optimizations_applied.append("cache_hit")
                     cached = True
                     cost_saved = 0.01
-                    return OptimizationResult(True, cost_saved, 0, optimizations_applied, None, True)
+                    return OptimizationResult(
+                        True, cost_saved, 0, optimizations_applied, None, True
+                    )
             if self.deduplicator:
                 dup_result = self.deduplicator.check_duplicate(agent_id or "unknown", prompt)
                 if dup_result.is_duplicate:
                     optimizations_applied.append("deduplication")
                     cached = True
                     cost_saved = 0.01
-                    return OptimizationResult(True, cost_saved, 0, optimizations_applied, None, True)
+                    return OptimizationResult(
+                        True, cost_saved, 0, optimizations_applied, None, True
+                    )
             original_prompt = prompt
             if self.prompt_optimizer:
                 prompt_result = self.prompt_optimizer.optimize(prompt)
@@ -107,31 +160,48 @@ class CostOptimizationOrchestrator:
                     optimizations_applied.append("context_optimization")
             input_tokens = self.token_counter.count(prompt).total_tokens
             if optimized_context:
-                input_tokens += sum(self.token_counter.count(str(v)).total_tokens for _, v, _ in optimized_context)
+                input_tokens += sum(
+                    self.token_counter.count(str(v)).total_tokens for _, v, _ in optimized_context
+                )
             if self.model_selector and not model:
-                recommendation = self.model_selector.select_model(estimated_input_tokens=input_tokens,
-                                                                estimated_output_tokens=estimated_output_tokens,
-                                                                prefer_cheap=self.config.prefer_cheap_models)
+                recommendation = self.model_selector.select_model(
+                    estimated_input_tokens=input_tokens,
+                    estimated_output_tokens=estimated_output_tokens,
+                    prefer_cheap=self.config.prefer_cheap_models,
+                )
                 model_used = recommendation.recommended_model
                 optimizations_applied.append("model_selection")
             total_tokens = input_tokens + estimated_output_tokens
             if not self.budget_manager.can_afford(total_tokens, agent_id):
-                return OptimizationResult(False, 0.0, tokens_saved, optimizations_applied, None, False, "Budget exceeded")
+                return OptimizationResult(
+                    False, 0.0, tokens_saved, optimizations_applied, None, False, "Budget exceeded"
+                )
             if tokens_saved > 0:
                 cost_saved = tokens_saved * 0.00003
-            return OptimizationResult(True, cost_saved, tokens_saved, optimizations_applied, model_used, cached)
+            return OptimizationResult(
+                True, cost_saved, tokens_saved, optimizations_applied, model_used, cached
+            )
         except Exception as e:
-            return OptimizationResult(False, 0.0, tokens_saved, optimizations_applied, None, False, str(e))
-    
-    def record_cost(self, agent_id: Optional[str], operation: str, model: str, token_usage: TokenUsage, metadata: Optional[Dict] = None):
+            return OptimizationResult(
+                False, 0.0, tokens_saved, optimizations_applied, None, False, str(e)
+            )
+
+    def record_cost(
+        self,
+        agent_id: Optional[str],
+        operation: str,
+        model: str,
+        token_usage: TokenUsage,
+        metadata: Optional[Dict] = None,
+    ):
         self.cost_tracker.record_cost(agent_id, operation, model, token_usage, metadata)
         try:
             self.budget_manager.consume(token_usage.total_tokens, agent_id)
         except BudgetExceededError:
             pass
-    
+
     def get_cost_report(self):
         return self.cost_tracker.get_report()
-    
+
     def get_budget_status(self):
         return self.budget_manager.get_status()

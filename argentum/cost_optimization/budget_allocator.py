@@ -1,12 +1,14 @@
 """
 Budget allocation across agents and tasks.
 """
-from typing import Dict, List, Optional
-from enum import Enum
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime
-import threading
+from enum import Enum
+from typing import Dict, List, Optional
+
 from .token_budget import TokenBudgetManager
+
 
 class AllocationStrategy(Enum):
     EQUAL = "equal"
@@ -14,6 +16,7 @@ class AllocationStrategy(Enum):
     USAGE_BASED = "usage_based"
     FAIR_SHARE = "fair_share"
     DYNAMIC = "dynamic"
+
 
 @dataclass
 class AgentAllocation:
@@ -24,6 +27,7 @@ class AgentAllocation:
     priority: int = 1
     usage_percentage: float = 0.0
 
+
 @dataclass
 class AllocationPlan:
     total_budget: int
@@ -31,8 +35,14 @@ class AllocationPlan:
     strategy: AllocationStrategy
     created_at: datetime = field(default_factory=datetime.utcnow)
 
+
 class BudgetAllocator:
-    def __init__(self, total_budget: int, strategy: AllocationStrategy = AllocationStrategy.EQUAL, reserve_percentage: float = 0.1):
+    def __init__(
+        self,
+        total_budget: int,
+        strategy: AllocationStrategy = AllocationStrategy.EQUAL,
+        reserve_percentage: float = 0.1,
+    ):
         self.total_budget = total_budget
         self.strategy = strategy
         self.reserve_percentage = reserve_percentage
@@ -40,14 +50,16 @@ class BudgetAllocator:
         self._allocations: Dict[str, int] = {}
         self._usage: Dict[str, int] = {}
         self._lock = threading.Lock()
-    
-    def register_agent(self, agent_id: str, priority: int = 1, initial_budget: Optional[int] = None):
+
+    def register_agent(
+        self, agent_id: str, priority: int = 1, initial_budget: Optional[int] = None
+    ):
         with self._lock:
             self._agents[agent_id] = {"priority": priority, "registered_at": datetime.utcnow()}
             self._usage[agent_id] = 0
             if initial_budget:
                 self._allocations[agent_id] = initial_budget
-    
+
     def allocate(self) -> AllocationPlan:
         with self._lock:
             available_budget = int(self.total_budget * (1 - self.reserve_percentage))
@@ -63,26 +75,28 @@ class BudgetAllocator:
                 used = self._usage.get(agent_id, 0)
                 priority = self._agents.get(agent_id, {}).get("priority", 1)
                 usage_pct = (used / allocated * 100) if allocated > 0 else 0.0
-                agent_allocations[agent_id] = AgentAllocation(agent_id, allocated, used, allocated - used, priority, usage_pct)
+                agent_allocations[agent_id] = AgentAllocation(
+                    agent_id, allocated, used, allocated - used, priority, usage_pct
+                )
             return AllocationPlan(self.total_budget, agent_allocations, self.strategy)
-    
+
     def record_usage(self, agent_id: str, tokens: int):
         with self._lock:
             if agent_id not in self._usage:
                 self._usage[agent_id] = 0
             self._usage[agent_id] += tokens
-    
+
     def get_agent_budget(self, agent_id: str) -> Optional[int]:
         with self._lock:
             return self._allocations.get(agent_id)
-    
+
     def _equal_allocation(self, available_budget: int) -> Dict[str, int]:
         agent_count = len(self._agents)
         if agent_count == 0:
             return {}
         per_agent = available_budget // agent_count
         return {agent_id: per_agent for agent_id in self._agents.keys()}
-    
+
     def _priority_based_allocation(self, available_budget: int) -> Dict[str, int]:
         if not self._agents:
             return {}

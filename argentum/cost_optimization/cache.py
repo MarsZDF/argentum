@@ -2,11 +2,12 @@
 Intelligent caching layer for AI agent responses.
 """
 import hashlib
+import threading
 import time
-from typing import Dict, Optional, Any
 from dataclasses import dataclass
 from datetime import datetime
-import threading
+from typing import Any, Dict, Optional
+
 
 class CacheHit:
     def __init__(self, key: str, value: Any, age_seconds: float):
@@ -14,9 +15,11 @@ class CacheHit:
         self.value = value
         self.age_seconds = age_seconds
 
+
 class CacheMiss:
     def __init__(self, key: str):
         self.key = key
+
 
 @dataclass
 class CacheConfig:
@@ -24,6 +27,7 @@ class CacheConfig:
     max_size: int = 1000
     enable_semantic_cache: bool = True
     semantic_threshold: float = 0.85
+
 
 @dataclass
 class CacheStats:
@@ -35,13 +39,14 @@ class CacheStats:
     evictions: int = 0
     cost_saved: float = 0.0
 
+
 class CacheLayer:
     def __init__(self, config: Optional[CacheConfig] = None):
         self.config = config or CacheConfig()
         self._cache: Dict[str, tuple] = {}
         self._lock = threading.Lock()
         self._stats = CacheStats()
-    
+
     def get(self, key: str):
         cache_key = self._normalize_key(key)
         with self._lock:
@@ -58,7 +63,7 @@ class CacheLayer:
             self._stats.misses += 1
             self._update_hit_rate()
             return CacheMiss(cache_key)
-    
+
     def set(self, key: str, value: Any, ttl_seconds: Optional[int] = None):
         cache_key = self._normalize_key(key)
         ttl = ttl_seconds or self.config.ttl_seconds
@@ -70,18 +75,23 @@ class CacheLayer:
                 self._stats.evictions += 1
             self._cache[cache_key] = (value, expiration)
             self._stats.size = len(self._cache)
-    
+
     def get_stats(self) -> CacheStats:
         with self._lock:
             self._stats.cost_saved = self._stats.hits * 0.01
-            return CacheStats(hits=self._stats.hits, misses=self._stats.misses,
-                            total_requests=self._stats.total_requests, hit_rate=self._stats.hit_rate,
-                            size=self._stats.size, evictions=self._stats.evictions,
-                            cost_saved=self._stats.cost_saved)
-    
+            return CacheStats(
+                hits=self._stats.hits,
+                misses=self._stats.misses,
+                total_requests=self._stats.total_requests,
+                hit_rate=self._stats.hit_rate,
+                size=self._stats.size,
+                evictions=self._stats.evictions,
+                cost_saved=self._stats.cost_saved,
+            )
+
     def _normalize_key(self, key: str) -> str:
         return " ".join(key.strip().split())
-    
+
     def _update_hit_rate(self):
         if self._stats.total_requests > 0:
             self._stats.hit_rate = self._stats.hits / self._stats.total_requests
