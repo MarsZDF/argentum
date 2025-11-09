@@ -119,7 +119,6 @@ def configure_security(
         >>> # Development configuration (more permissive)
         >>> configure_security(max_state_size_mb=50, max_context_items=50000)
     """
-    global _security_config
     _security_config.max_state_size = max_state_size_mb * 1024 * 1024
     _security_config.max_context_items = max_context_items
     _security_config.max_plan_steps = max_plan_steps
