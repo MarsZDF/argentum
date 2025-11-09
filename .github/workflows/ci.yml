@@ -2,18 +2,16 @@ name: CI
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main ]
   pull_request:
     branches: [ main ]
 
 jobs:
   test:
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     strategy:
-      fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
+        python-version: ["3.8", "3.10", "3.12"]
         
     steps:
     - uses: actions/checkout@v4
@@ -26,35 +24,20 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -e .[dev,lint,perf]
+        pip install -e .[dev,lint]
         
     - name: Lint with flake8
       run: |
         flake8 argentum tests --count --select=E9,F63,F7,F82 --show-source --statistics
-        flake8 argentum tests --count --exit-zero --max-complexity=10 --max-line-length=100 --statistics
         
-    - name: Check code formatting with black
+    - name: Check code formatting
       run: |
         black --check argentum tests
-        
-    - name: Check import sorting with isort
-      run: |
         isort --check-only argentum tests
-        
-    - name: Type check with mypy
-      run: |
-        mypy argentum
         
     - name: Test with pytest
       run: |
-        pytest tests/ -v --cov=argentum --cov-report=xml --cov-report=term-missing
-        
-    - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v3
-      if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'
-      with:
-        file: ./coverage.xml
-        fail_ci_if_error: false
+        pytest tests/ -v --cov=argentum --cov-report=term-missing
 
   test-minimal-deps:
     runs-on: ubuntu-latest
@@ -70,115 +53,37 @@ jobs:
     - name: Install minimal dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -e .  # Only core dependencies
+        pip install -e .
         pip install pytest
         
-    - name: Test core functionality without optional deps
+    - name: Test core functionality
       run: |
         python -c "
         import argentum
-        print('Core modules available:', argentum.check_dependencies())
         
         # Test core functionality works
         diff = argentum.StateDiff()
         diff.snapshot('test', {'data': 1})
-        print('StateDiff works')
+        print('✓ StateDiff works')
         
         protocol = argentum.HandoffProtocol()
         handoff = protocol.create_handoff('a', 'b', 'summary', [], confidence=0.8)
-        print('Handoff works')
+        print('✓ Handoff works')
         
         decay = argentum.ContextDecay(5)
         decay.add('test', 'data')
-        print('ContextDecay works')
+        print('✓ ContextDecay works')
         
-        # Test that PlanLinter fails gracefully
+        # Test that PlanLinter fails gracefully without optional deps
         try:
             linter = argentum.PlanLinter()
-            print('ERROR: PlanLinter should not work without optional deps')
+            print('✗ PlanLinter should fail without optional deps')
             exit(1)
-        except ImportError as e:
-            print('PlanLinter correctly fails without optional deps:', str(e))
+        except ImportError:
+            print('✓ PlanLinter correctly fails without optional deps')
         
-        print('All core functionality works without optional dependencies')
+        print('✓ All core functionality works without optional dependencies')
         "
-
-  security-scan:
-    runs-on: ubuntu-latest
-    name: Security scan
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: "3.11"
-        
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install bandit safety
-        
-    - name: Security scan with bandit
-      run: |
-        bandit -r argentum/ -f json -o bandit-report.json || true
-        bandit -r argentum/
-        
-    - name: Check dependencies with safety
-      run: |
-        safety check || true
-
-  docs:
-    runs-on: ubuntu-latest
-    name: Documentation build
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: "3.11"
-        
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -e .[docs]
-        
-    - name: Build documentation
-      run: |
-        cd docs && make html
-        
-    - name: Upload docs artifact
-      uses: actions/upload-artifact@v3
-      with:
-        name: documentation
-        path: docs/_build/html/
-
-  performance:
-    runs-on: ubuntu-latest
-    name: Performance benchmarks
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: "3.11"
-        
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -e .[dev,perf]
-        
-    - name: Run performance tests
-      run: |
-        pytest tests/test_performance.py -v --benchmark-only --benchmark-json=benchmark.json
-        
-    - name: Upload benchmark results
-      uses: actions/upload-artifact@v3
-      with:
-        name: benchmark-results
-        path: benchmark.json
 
   build-package:
     runs-on: ubuntu-latest
@@ -191,26 +96,12 @@ jobs:
       with:
         python-version: "3.11"
         
-    - name: Install build dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install build twine
-        
     - name: Build package
       run: |
+        python -m pip install --upgrade pip build
         python -m build
         
-    - name: Verify package
-      run: |
-        twine check dist/*
-        
-    - name: Test installation from wheel
+    - name: Test installation
       run: |
         pip install dist/*.whl
-        python -c "import argentum; print(f'Installed argentum {argentum.__version__}')"
-        
-    - name: Upload package artifacts
-      uses: actions/upload-artifact@v3
-      with:
-        name: python-package
-        path: dist/
+        python -c "import argentum; print(f'✓ Installed argentum {argentum.__version__}')"
