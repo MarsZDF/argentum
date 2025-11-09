@@ -69,8 +69,9 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 # Import optional dependencies for enhanced linting
 try:
-    import jsonschema
     import jsonpatch
+    import jsonschema
+
     HAS_ENHANCED_LINTING = True
 except ImportError as e:
     raise ImportError(
